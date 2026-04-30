@@ -1,9 +1,9 @@
+from gi.repository import Gst, GLib
 import sys
 import time
 import gi
 import psutil
 gi.require_version('Gst', '1.0')
-from gi.repository import Gst, GLib
 
 Gst.init(None)
 
@@ -18,14 +18,21 @@ cpu_measurements = []
 psutil.cpu_percent(interval=None)
 
 # Перехватываем кадр в самом начале Ветки 0
+
+
 def start_probe(pad, info):
+    global frame_start_times
     buf = info.get_buffer()
     if buf and buf.pts != Gst.CLOCK_TIME_NONE:
         frame_start_times[buf.pts] = time.perf_counter()
     return Gst.PadProbeReturn.OK
 
 # Перехватываем кадр на выходе (Hailo сохраняет оригинальный PTS после де-батчинга)
+
+
 def end_probe(pad, info):
+    global frame_start_times
+    global latencies
     buf = info.get_buffer()
     if buf and buf.pts != Gst.CLOCK_TIME_NONE and buf.pts in frame_start_times:
         latency_ms = (time.perf_counter() - frame_start_times[buf.pts]) * 1000
@@ -35,10 +42,12 @@ def end_probe(pad, info):
         del frame_start_times[buf.pts]
     return Gst.PadProbeReturn.OK
 
+
 def monitor_cpu():
     cpu_usage = psutil.cpu_percent(interval=None)
     cpu_measurements.append(cpu_usage)
     return True
+
 
 def on_bus_message(bus, message, loop):
     t = message.type
@@ -51,21 +60,22 @@ def on_bus_message(bus, message, loop):
         loop.quit()
     return True
 
+
 def stop_pipeline():
-    print(f"\n[ТАЙМЕР] Время теста ({TEST_DURATION_SEC} сек) вышло. Автоматическая остановка...")
+    print(
+        f"\n[ТАЙМЕР] Время теста ({TEST_DURATION_SEC} сек) вышло. Автоматическая остановка...")
     loop.quit()
-    return False 
+    return False
 
 # Ваш единый пайплайн, оптимизированный для замера задержки (без очередей и с имитацией камер)
-
 
 
 models = ["yolov8n", "yolov9t", "yolov10n", "yolov11n", "yolo26n",
           "yolov8s", "yolov9s", "yolov10s", "yolov11s", "yolo26s"]
 results = {}
 
-for model in models[-2:]:
-    MODEL_PATH = "/home/drone/Desktop/YOLO_test/models/" + model + ".hef"
+for model in models:
+    MODEL_PATH = "/home/drone1/Desktop/Rpi5Tests/YOLO_test/models/" + model + ".hef"
     print("Тест модели ", model)
     pipeline_str = f"""
       filesrc location={VIDEO_FILE} name=source_0 ! decodebin ! identity sync=true ! 
@@ -83,7 +93,10 @@ for model in models[-2:]:
 
     t_lat = 0
     for k in range(TEST_COUNT):
-        print(f"Сборка монолитного пайплайна (1 поток, Batch=1, тест={k+1})...")
+        frame_start_times = {}
+        latencies = []
+        print(
+            f"Сборка монолитного пайплайна (1 поток, Batch=1, тест={k+1})...")
         pipeline = Gst.parse_launch(pipeline_str)
 
         start_element = pipeline.get_by_name("start_queue_0")
@@ -93,8 +106,10 @@ for model in models[-2:]:
             print("Ошибка: не удалось найти элементы зондирования!")
             sys.exit(-1)
 
-        start_element.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, start_probe)
-        end_element.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, end_probe)
+        start_element.get_static_pad("src").add_probe(
+            Gst.PadProbeType.BUFFER, start_probe)
+        end_element.get_static_pad("src").add_probe(
+            Gst.PadProbeType.BUFFER, end_probe)
 
         loop = GLib.MainLoop()
         bus = pipeline.get_bus()
@@ -102,7 +117,8 @@ for model in models[-2:]:
         bus.connect("message", on_bus_message, loop)
 
         GLib.timeout_add(1000, monitor_cpu)
-        GLib.timeout_add_seconds(TEST_DURATION_SEC, stop_pipeline) # Авто-стоп через 30 сек
+        # Авто-стоп через 30 сек
+        GLib.timeout_add_seconds(TEST_DURATION_SEC, stop_pipeline)
 
         print("Запуск... (Подождите 15-20 секунд и нажмите Ctrl+C)")
         ret = pipeline.set_state(Gst.State.PLAYING)
@@ -119,22 +135,27 @@ for model in models[-2:]:
             print(f"ОТЧЕТ: ЗАПУСК {k}:")
             print("==================================================")
             if latencies:
-                valid_latencies = latencies[5:] if len(latencies) > 5 else latencies
+                valid_latencies = latencies[5:] if len(
+                    latencies) > 5 else latencies
                 avg_latency = sum(valid_latencies) / len(valid_latencies)
                 t_lat += avg_latency
-                print(f"-> Сквозная задержка (Latency):     {avg_latency:.2f} мс")
+                print(
+                    f"-> Сквозная задержка (Latency):     {avg_latency:.2f} мс")
                 print(f"Количество замеров: {len(latencies)}")
-            
+
             if cpu_measurements:
-                valid_cpu = cpu_measurements[1:-1] if len(cpu_measurements) > 2 else cpu_measurements
+                valid_cpu = cpu_measurements[1:-1] if len(
+                    cpu_measurements) > 2 else cpu_measurements
                 if valid_cpu:
                     avg_cpu = sum(valid_cpu) / len(valid_cpu)
-                    print(f"-> Средняя загрузка CPU:            {avg_cpu:.1f} %")
-                    print(f"-> Остаточный ресурс (Headroom):    {100.0 - avg_cpu:.1f} %")
+                    print(
+                        f"-> Средняя загрузка CPU:            {avg_cpu:.1f} %")
+                    print(
+                        f"-> Остаточный ресурс (Headroom):    {100.0 - avg_cpu:.1f} %")
             print("==================================================")
             pipeline.set_state(Gst.State.NULL)
         time.sleep(5)
-        
+
     print(f"Средняя задержка за {TEST_COUNT} запусков: {t_lat / 3:.2f}")
     results[model] = round(t_lat / 3, 2)
 

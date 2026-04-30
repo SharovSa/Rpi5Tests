@@ -1,17 +1,19 @@
 #!/bin/bash
 
 # Настройки
+MODEL=$1
+
 VIDEO_FILE="../long_visible.mp4" # Ваш склеенный длинный файл
-HEF_PATH=~/Desktop/YOLO_test/models/yolov8n.hef
+HEF_PATH=~/Desktop/Rpi5Tests/YOLO_test/models/$MODEL.hef
 SO_PATH="/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so"
 JSON_PATH="./yolov8s.json"
-CSV_FILE="benchmark_results_8n2.csv"
+CSV_FILE="fps_results_$MODEL.csv"
 
 # Массивы для тестирования
-STREAMS=(2 4 6)
+STREAMS=(1)
 RUNS=1
 
-echo "Streams;Per_Stream_FPS;Total_FPS;Estimated_Latency_ms" > "$CSV_FILE"
+# echo "Streams;Per_Stream_FPS;Total_FPS;Estimated_Latency_ms" > "$CSV_FILE"
 echo "Бенчмарк начат. Результаты будут записаны в $CSV_FILE"
 echo "--------------------------------------------------------"
 
@@ -37,9 +39,9 @@ for stream_count in "${STREAMS[@]}"; do
 
     echo "$stream_count;$formatted_per_stream;$formatted_total;$latency_ms" >> "$CSV_FILE"
     echo "Результат: 1 поток = $formatted_per_stream FPS | Задержка = $latency_ms мс"
-    echo "Охлаждение 5 секунд..."
-    sleep 5
+    echo "Охлаждение 30 секунд..."
+    sleep 30
     echo "--------------------------------------------------------"
 done
-# O0iVsvamHwP435XA
+
 echo "Бенчмарк успешно завершен! Откройте файл $CSV_FILE"
